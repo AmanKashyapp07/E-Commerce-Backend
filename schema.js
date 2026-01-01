@@ -7,7 +7,7 @@ const typeDefs = gql`
     comment: String
     userUid: String!
     username: String!        # 👈 NEW (readable name)
-    createdAt: String!
+    createdAt: String
   }
 type Cart {
     id: ID!

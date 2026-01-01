@@ -20,7 +20,16 @@ admin.initializeApp({
 // 4. CREATE SERVER
 const server = new ApolloServer({
   typeDefs,
-  resolvers: { ...resolvers, ...cartResolvers },
+  resolvers: {
+    Query: {
+      ...resolvers.Query,
+      ...cartResolvers.Query,
+    },
+    Mutation: {
+      ...resolvers.Mutation,
+      ...cartResolvers.Mutation,
+    },
+  },
   
   // vvvvv FIREBASE CONTEXT LOGIC vvvvv
   context: async ({ req }) => {
