@@ -7,7 +7,9 @@ const pool = require("./db");
 // 2. INITIALIZE FIREBASE ADMIN
 // Make sure you have 'serviceAccountKey.json' in your root folder
 const serviceAccount = require("./firebase-admin.json");
-
+function getUsernameFromEmail(email) {
+  return email.split("@")[0].split(".")[0]
+}
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
@@ -30,51 +32,54 @@ const resolvers = {
   },
 
   Product: {
-    reviews: async (product) => {
-      const { rows } = await pool.query(
-        "SELECT * FROM reviews WHERE product_id = $1 ORDER BY created_at DESC",
-        [product.id]
-      );
+  reviews: async (product) => {
+    const { rows } = await pool.query(
+      "SELECT * FROM reviews WHERE product_id = $1 ORDER BY created_at DESC",
+      [product.id]
+    )
 
-      return rows.map(r => ({
-        id: r.id,
-        rating: r.rating,
-        comment: r.comment,
-        userUid: r.user_uid,
-        createdAt: r.created_at.toISOString()
-      }));
-    }
-  },
+    return rows.map(r => ({
+      id: r.id,
+      rating: r.rating,
+      comment: r.comment,
+      userUid: r.user_uid,
+      username: r.username,               // 👈 NEW
+      createdAt: r.created_at.toISOString()
+    }))
+  }
+},
 
   Mutation: {
     addReview: async (_, { productId, rating, comment }, context) => {
-      // 1. Check if user exists in context
-      if (!context.user) {
-        throw new Error("Unauthorized");
-      }
+  if (!context.user) {
+    throw new Error("Unauthorized")
+  }
 
-      // Firebase stores the user ID in the 'uid' field
-      const userUid = context.user.uid;
+  const userUid = context.user.uid
+  const email = context.user.email
+  const username = getUsernameFromEmail(email)
 
-      const { rows } = await pool.query(
-        `
-        INSERT INTO reviews (product_id, user_uid, rating, comment)
-        VALUES ($1, $2, $3, $4)
-        RETURNING *
-        `,
-        [productId, userUid, rating, comment]
-      );
+  const { rows } = await pool.query(
+    `
+    INSERT INTO reviews (product_id, user_uid, username, rating, comment)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING *
+    `,
+    [productId, userUid, username, rating, comment]
+  )
 
-      const r = rows[0];
+  const r = rows[0]
 
-      return {
-        id: r.id,
-        rating: r.rating,
-        comment: r.comment,
-        userUid: r.user_uid,
-        createdAt: r.created_at.toISOString()
-      };
-    }
+  return {
+    id: r.id,
+    rating: r.rating,
+    comment: r.comment,
+    userUid: r.user_uid,
+    username: r.username,                 // 👈 NEW
+    createdAt: r.created_at.toISOString()
+  }
+}
+
   }
 };
 

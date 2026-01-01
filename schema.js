@@ -6,6 +6,7 @@ const typeDefs = gql`
     rating: Int!
     comment: String
     userUid: String!
+    username: String!        # 👈 NEW (readable name)
     createdAt: String!
   }
 
@@ -23,7 +24,6 @@ const typeDefs = gql`
     product(id: ID!): Product
   }
 
-  # 👇 NEW: mutation entry points
   type Mutation {
     addReview(
       productId: ID!
