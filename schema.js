@@ -9,7 +9,19 @@ const typeDefs = gql`
     username: String!        # 👈 NEW (readable name)
     createdAt: String!
   }
+type Cart {
+    id: ID!
+    items: [CartItem!]!
+    totalItems: Int!
+    totalPrice: Int!
+  }
 
+  type CartItem {
+    id: ID!
+    product: Product!
+    quantity: Int!
+    subtotal: Int!
+  }
   type Product {
     id: ID!
     name: String!
@@ -22,6 +34,7 @@ const typeDefs = gql`
   type Query {
     products: [Product!]!
     product(id: ID!): Product
+    myCart: Cart!
   }
 
   type Mutation {
@@ -30,6 +43,21 @@ const typeDefs = gql`
       rating: Int!
       comment: String
     ): Review!
+    addToCart(
+      productId: ID!
+      quantity: Int!
+    ): Cart!
+
+    updateCartItem(
+      productId: ID!
+      quantity: Int!
+    ): Cart!
+
+    removeFromCart(
+      productId: ID!
+    ): Cart!
+
+    clearCart: Cart!
   }
 `
 
