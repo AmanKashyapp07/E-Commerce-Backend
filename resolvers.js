@@ -10,6 +10,7 @@ const resolvers = {
             p.name,
             p.price,
             p.image,
+            p.quantity,
             p.description,
             r.id AS review_id,
             r.rating,
@@ -19,6 +20,7 @@ const resolvers = {
             r.created_at
           FROM products p
           LEFT JOIN reviews r ON r.product_id = p.id
+          WHERE p.quantity > 0
           ORDER BY p.id ASC, r.created_at DESC
         `);
 
@@ -33,6 +35,7 @@ const resolvers = {
               name: row.name || "Aman's Product", // Use "Aman" as fallback
               price: parseInt(row.price) || 0,     // Cast to Int
               image: row.image || "",
+              quantity: row.quantity || 0,
               description: row.description || "",
               reviews: []
             };
@@ -71,6 +74,7 @@ const resolvers = {
           name: p.name || "Aman's Product",
           price: parseInt(p.price) || 0,
           image: p.image || "",
+          quantity: p.quantity || 0,
           description: p.description || "",
           reviews: [] // Reviews usually fetched via products or separate resolver
         };

@@ -1,4 +1,4 @@
-const { gql } = require("apollo-server")
+const { gql } = require("apollo-server");
 
 const typeDefs = gql`
   type Review {
@@ -6,10 +6,10 @@ const typeDefs = gql`
     rating: Int!
     comment: String
     userUid: String!
-    username: String!        # 👈 NEW (readable name)
+    username: String! 
     createdAt: String
   }
-type Cart {
+  type Cart {
     id: ID!
     items: [CartItem!]!
     totalItems: Int!
@@ -29,6 +29,7 @@ type Cart {
     description: String
     image: String
     reviews: [Review!]!
+    quantity: Int
   }
 
   type Query {
@@ -38,27 +39,15 @@ type Cart {
   }
 
   type Mutation {
-    addReview(
-      productId: ID!
-      rating: Int!
-      comment: String
-    ): Review!
-    addToCart(
-      productId: ID!
-      quantity: Int!
-    ): Cart!
+    addReview(productId: ID!, rating: Int!, comment: String): Review!
+    addToCart(productId: ID!, quantity: Int!): Cart!
 
-    updateCartItem(
-      productId: ID!
-      quantity: Int!
-    ): Cart!
+    updateCartItem(productId: ID!, quantity: Int!): Cart!
 
-    removeFromCart(
-      productId: ID!
-    ): Cart!
+    removeFromCart(productId: ID!): Cart!
 
     clearCart: Cart!
   }
-`
+`;
 
-module.exports = typeDefs
+module.exports = typeDefs;

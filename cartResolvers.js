@@ -13,7 +13,14 @@ async function getOrCreateCart(firebaseUid) {
   );
   return newRows[0];
 }
-
+async function getProductStock(productId) {
+  const { rows } = await pool.query(
+    "SELECT quantity FROM products WHERE id = $1",
+    [productId]
+  );
+  if (!rows[0]) throw new Error("Product not found");
+  return parseInt(rows[0].quantity) || 0;
+}
 async function buildCartResponse(cartId) {
   const { rows } = await pool.query(
     `SELECT ci.id AS cart_item_id, ci.quantity, p.id AS product_id, p.name, p.price, p.image
@@ -26,7 +33,7 @@ async function buildCartResponse(cartId) {
   let totalItems = 0;
   let totalPrice = 0;
 
-  const items = rows.map(row => {
+  const items = rows.map((row) => {
     const qty = parseInt(row.quantity) || 0;
     const prc = parseInt(row.price) || 0;
     const sub = qty * prc;
@@ -42,8 +49,8 @@ async function buildCartResponse(cartId) {
         id: String(row.product_id),
         name: row.name || "Aman's Product",
         price: prc,
-        image: row.image || ""
-      }
+        image: row.image || "",
+      },
     };
   });
 
@@ -51,7 +58,7 @@ async function buildCartResponse(cartId) {
     id: String(cartId),
     items,
     totalItems,
-    totalPrice
+    totalPrice,
   };
 }
 
@@ -61,7 +68,7 @@ const cartResolvers = {
       if (!user) throw new Error("Unauthorized");
       const cart = await getOrCreateCart(user.uid);
       return buildCartResponse(cart.id);
-    }
+    },
   },
 
   Mutation: {
@@ -80,19 +87,36 @@ const cartResolvers = {
 
     updateCartItem: async (_, { productId, quantity }, { user }) => {
       if (!user) throw new Error("Unauthorized");
+
       const cart = await getOrCreateCart(user.uid);
-      if (quantity <= 0) {
-        await pool.query("DELETE FROM cart_items WHERE cart_id = $1 AND product_id = $2", [cart.id, productId]);
-      } else {
-        await pool.query("UPDATE cart_items SET quantity = $3 WHERE cart_id = $1 AND product_id = $2", [cart.id, productId, quantity]);
+      const stock = await getProductStock(productId);
+
+      if (quantity > stock) {
+        throw new Error(`Only ${stock} items available`);
       }
+
+      if (quantity <= 0) {
+        await pool.query(
+          "DELETE FROM cart_items WHERE cart_id = $1 AND product_id = $2",
+          [cart.id, productId]
+        );
+      } else {
+        await pool.query(
+          "UPDATE cart_items SET quantity = $3 WHERE cart_id = $1 AND product_id = $2",
+          [cart.id, productId, quantity]
+        );
+      }
+
       return buildCartResponse(cart.id);
     },
 
     removeFromCart: async (_, { productId }, { user }) => {
       if (!user) throw new Error("Unauthorized");
       const cart = await getOrCreateCart(user.uid);
-      await pool.query("DELETE FROM cart_items WHERE cart_id = $1 AND product_id = $2", [cart.id, productId]);
+      await pool.query(
+        "DELETE FROM cart_items WHERE cart_id = $1 AND product_id = $2",
+        [cart.id, productId]
+      );
       return buildCartResponse(cart.id);
     },
 
@@ -101,8 +125,8 @@ const cartResolvers = {
       const cart = await getOrCreateCart(user.uid);
       await pool.query("DELETE FROM cart_items WHERE cart_id = $1", [cart.id]);
       return buildCartResponse(cart.id);
-    }
-  }
+    },
+  },
 };
 
 module.exports = cartResolvers;
