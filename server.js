@@ -1,23 +1,60 @@
-// 1. IMPORT DEPENDENCIES
-const { ApolloServer } = require("apollo-server");
-const admin = require("firebase-admin"); // <--- CHANGED: Use Firebase Admin
-const typeDefs = require("./schema");
-const pool = require("./db");
-const resolvers = require('./resolvers.js')
-const cartResolvers = require('./cartResolvers.js')
-// 2. INITIALIZE FIREBASE ADMIN
-// Make sure you have 'serviceAccountKey.json' in your root folder
-const serviceAccount = require("./firebase-admin.json");
-function getUsernameFromEmail(email) {
-  return email.split("@")[0].split(".")[0]
-}
+require("dotenv").config()
+const express = require("express")
+const { ApolloServer } = require("apollo-server-express")
+const cors = require("cors")
+const admin = require("firebase-admin")
+
+const typeDefs = require("./schema")
+const resolvers = require("./resolvers")
+const cartResolvers = require("./cartResolvers")
+const paymentResolvers = require("./paymentResolvers")
+const paymentRoutes = require("./paymentRoutes")
+
+const pool = require("./db")
+const stripe = require("./stripe")
+
+const serviceAccount = require("./firebase-admin.json")
+
+// --------------------
+// Firebase Init
+// --------------------
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
+  credential: admin.credential.cert(serviceAccount),
+})
 
+// --------------------
+// Express App
+// --------------------
+const app = express()
 
+app.use(cors())
+app.use(express.json())
 
-// 4. CREATE SERVER
+// --------------------
+// Firebase Auth Middleware
+// --------------------
+app.use(async (req, _, next) => {
+  const auth = req.headers.authorization
+
+  if (auth?.startsWith("Bearer ")) {
+    try {
+      const token = auth.split(" ")[1]
+      req.user = await admin.auth().verifyIdToken(token)
+    } catch {
+      req.user = null
+    }
+  }
+  next()
+})
+
+// --------------------
+// REST PAYMENT ROUTES
+// --------------------
+app.use("/payments", paymentRoutes)
+
+// --------------------
+// Apollo Server
+// --------------------
 const server = new ApolloServer({
   typeDefs,
   resolvers: {
@@ -28,37 +65,25 @@ const server = new ApolloServer({
     Mutation: {
       ...resolvers.Mutation,
       ...cartResolvers.Mutation,
+      ...paymentResolvers.Mutation,
     },
   },
-  
-  // vvvvv FIREBASE CONTEXT LOGIC vvvvv
-  context: async ({ req }) => {
-    const authHeader = req.headers.authorization || "";
-    
-    if (authHeader.startsWith("Bearer ")) {
-      const token = authHeader.split(" ")[1];
-      try {
-        // Verify the ID token using Firebase Admin
-        const decodedToken = await admin.auth().verifyIdToken(token);
-        
-        // Return the decoded user object (contains .uid, .email, etc.)
-        return { user: decodedToken };
-      } catch (err) {
-        console.warn("Firebase Auth Error:", err.message);
-      }
-    }
-    // Return empty context if auth fails
-    return {};
-  },
-  // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  context: ({ req }) => ({
+    user: req.user,
+    pool,
+    stripe,
+  }),
+})
 
-  cors: {
-    origin: "*", 
-    credentials: true
-  }
-});
+async function startServer() {
+  await server.start()
+  server.applyMiddleware({ app, path: "/graphql" })
 
-// 5. START SERVER
-server.listen().then(({ url }) => {
-  console.log(`🚀 GraphQL Server running at ${url}`);
-});
+  app.listen(4000, () => {
+    console.log("🚀 Server running at http://localhost:4000")
+    console.log("📦 GraphQL → http://localhost:4000/graphql")
+    console.log("💳 Payments → http://localhost:4000/payments/create-payment-intent")
+  })
+}
+
+startServer()

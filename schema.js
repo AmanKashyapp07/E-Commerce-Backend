@@ -47,6 +47,7 @@ const typeDefs = gql`
     removeFromCart(productId: ID!): Cart!
 
     clearCart: Cart!
+    createPaymentIntent(amount: Int!): String!
   }
 `;
 
