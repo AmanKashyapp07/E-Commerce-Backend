@@ -6,8 +6,22 @@ const typeDefs = gql`
     rating: Int!
     comment: String
     userUid: String!
-    username: String! 
+    username: String!
     createdAt: String
+  }
+  type Order {
+    id: ID!
+    totalAmount: Int!
+    status: String!
+    createdAt: String!
+    items: [OrderItem!]!
+  }
+
+  type OrderItem {
+    id: ID!
+    quantity: Int!
+    priceAtPurchase: Int!
+    product: Product!
   }
   type Cart {
     id: ID!
@@ -36,6 +50,7 @@ const typeDefs = gql`
     products: [Product!]!
     product(id: ID!): Product
     myCart: Cart!
+    myOrders: [Order!]!
   }
 
   type Mutation {

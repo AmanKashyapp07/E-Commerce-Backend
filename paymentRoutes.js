@@ -62,6 +62,7 @@ router.post("/create-payment-intent", async (req, res) => {
 });
 
 // --- 2. NEW: CHECKOUT SUCCESS (Fixes Cart & Inventory) ---
+// --- 2. NEW: CHECKOUT SUCCESS (Creates Order, Fixes Inventory, Clears Cart) ---
 router.post("/checkout-success", async (req, res) => {
   const client = await pool.connect(); // Use a client for transactions
   try {
@@ -78,7 +79,7 @@ router.post("/checkout-success", async (req, res) => {
       return res.status(400).json({ message: "Missing Payment ID" });
     }
 
-    // B. Verify Payment Status with Stripe (Security Check)
+    // B. Verify Payment Status with Stripe
     const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
     if (intent.status !== "succeeded") {
       return res.status(400).json({ message: "Payment not completed" });
@@ -95,32 +96,71 @@ router.post("/checkout-success", async (req, res) => {
     const cartId = cartRes.rows[0]?.id;
 
     if (cartId) {
-      // 2. Get items to reduce inventory
+      // 2. Get items and current prices
+      // We need the price to save it into 'order_items' history
       const itemsRes = await client.query(
-        "SELECT product_id, quantity FROM cart_items WHERE cart_id = $1", 
+        `SELECT ci.product_id, ci.quantity, p.price 
+         FROM cart_items ci
+         JOIN products p ON ci.product_id = p.id
+         WHERE ci.cart_id = $1`, 
         [cartId]
       );
 
-      // 3. Loop through items and decrement stock
-      for (const item of itemsRes.rows) {
-        await client.query(
-          "UPDATE products SET quantity = quantity - $1 WHERE id = $2",
-          [item.quantity, item.product_id]
-        );
-      }
+      if (itemsRes.rows.length > 0) {
+        // 3. Calculate Total Order Amount
+        let totalAmount = 0;
+        for (const item of itemsRes.rows) {
+          totalAmount += item.price * item.quantity;
+        }
 
-      // 4. Clear the Cart
-      await client.query("DELETE FROM cart_items WHERE cart_id = $1", [cartId]);
+        // 4. Create the Order Record
+        const insertOrderQuery = `
+          INSERT INTO orders (firebase_uid, total_amount, status, stripe_payment_intent_id)
+          VALUES ($1, $2, 'paid', $3)
+          RETURNING id
+        `;
+        const orderResult = await client.query(insertOrderQuery, [
+          user.uid, 
+          totalAmount, 
+          paymentIntentId
+        ]);
+        const newOrderId = orderResult.rows[0].id;
+
+        // 5. Loop items to: Save Order Items AND Decrement Stock
+        for (const item of itemsRes.rows) {
+          // a. Insert into order_items
+          await client.query(
+            `INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase)
+             VALUES ($1, $2, $3, $4)`,
+            [newOrderId, item.product_id, item.quantity, item.price]
+          );
+
+          // b. Decrement Stock
+          await client.query(
+            "UPDATE products SET quantity = quantity - $1 WHERE id = $2",
+            [item.quantity, item.product_id]
+          );
+        }
+
+        // 6. Clear the Cart
+        await client.query("DELETE FROM cart_items WHERE cart_id = $1", [cartId]);
+      }
     }
 
     // D. Commit Transaction (Save Changes)
     await client.query('COMMIT');
     
-    res.json({ success: true, message: "Order finalized" });
+    res.json({ success: true, message: "Order finalized and saved" });
 
   } catch (err) {
     await client.query('ROLLBACK'); // Undo changes if error occurs
-    console.error(err);
+    console.error("Checkout Error:", err);
+    
+    // Check for unique violation (if webhook ran first)
+    if (err.code === '23505') { // Postgres unique_violation code
+        return res.json({ success: true, message: "Order already processed" });
+    }
+
     res.status(500).json({ message: err.message });
   } finally {
     client.release();

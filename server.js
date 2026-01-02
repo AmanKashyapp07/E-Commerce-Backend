@@ -58,10 +58,17 @@ app.use("/payments", paymentRoutes)
 const server = new ApolloServer({
   typeDefs,
   resolvers: {
+    // 1. Spread the main resolvers first. 
+    // This ensures 'OrderItem' and any other Type resolvers (like Product) are included.
+    ...resolvers,
+
+    // 2. Then merge the Queries
     Query: {
       ...resolvers.Query,
       ...cartResolvers.Query,
     },
+
+    // 3. Then merge the Mutations
     Mutation: {
       ...resolvers.Mutation,
       ...cartResolvers.Mutation,
@@ -74,7 +81,6 @@ const server = new ApolloServer({
     stripe,
   }),
 })
-
 async function startServer() {
   await server.start()
   server.applyMiddleware({ app, path: "/graphql" })
