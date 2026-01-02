@@ -27,20 +27,22 @@ const typeDefs = gql`
     id: ID!
     items: [CartItem!]!
     totalItems: Int!
-    totalPrice: Int!
+    totalPrice: Float!
   }
 
   type CartItem {
     id: ID!
     product: Product!
     quantity: Int!
-    subtotal: Int!
+    subtotal: Float!
   }
   type Product {
     id: ID!
     name: String!
     price: Int!
     description: String
+    finalPrice: Float!
+    discountPercent: Int
     image: String
     reviews: [Review!]!
     quantity: Int
