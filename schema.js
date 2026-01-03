@@ -11,7 +11,7 @@ const typeDefs = gql`
   }
   type Order {
     id: ID!
-    totalAmount: Int!
+    totalAmount: Float!
     status: String!
     createdAt: String!
     items: [OrderItem!]!
@@ -20,7 +20,7 @@ const typeDefs = gql`
   type OrderItem {
     id: ID!
     quantity: Int!
-    priceAtPurchase: Int!
+    priceAtPurchase: Float!
     product: Product!
   }
   type Cart {
@@ -39,7 +39,7 @@ const typeDefs = gql`
   type Product {
     id: ID!
     name: String!
-    price: Int!
+    price: Float!
     description: String
     finalPrice: Float!
     discountPercent: Int

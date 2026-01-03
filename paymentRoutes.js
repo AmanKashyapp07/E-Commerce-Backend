@@ -5,7 +5,7 @@ const stripe = require("./stripe");
 const pool = require("./db");
 
 // -----------------------------------------------------
-// 1. CREATE PAYMENT INTENT (USES FINAL PRICE)
+// 1. CREATE PAYMENT INTENT
 // -----------------------------------------------------
 router.post("/create-payment-intent", async (req, res) => {
   try {
@@ -28,6 +28,7 @@ router.post("/create-payment-intent", async (req, res) => {
 
     const cartId = cartRes.rows[0].id;
 
+    // We fetch the raw price calculation from DB, but we will round it in JS
     const itemsRes = await pool.query(
       `
       SELECT
@@ -51,15 +52,22 @@ router.post("/create-payment-intent", async (req, res) => {
 
     let totalAmount = 0;
     for (const item of itemsRes.rows) {
-      totalAmount += Number(item.final_price) * item.quantity;
+      // FIX: Round the individual price to an integer immediately
+      const unitPrice = Math.round(Number(item.final_price));
+      totalAmount += unitPrice * item.quantity;
     }
+    
+    // FIX: Ensure total is explicitly rounded (redundant if unitPrice is rounded, but safe)
+    totalAmount = Math.round(totalAmount);
 
     if (totalAmount < 50) {
       return res.status(400).json({ message: "Minimum order value is ₹50" });
     }
 
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(totalAmount * 100),
+      // Stripe expects amount in lowest currency unit (e.g., paise)
+      // Since totalAmount is now an integer Rupees, we multiply by 100
+      amount: totalAmount * 100, 
       currency: "inr",
       metadata: {
         userId: user.uid,
@@ -75,7 +83,7 @@ router.post("/create-payment-intent", async (req, res) => {
 });
 
 // -----------------------------------------------------
-// 2. CHECKOUT SUCCESS (LOCKS FINAL PRICE)
+// 2. CHECKOUT SUCCESS
 // -----------------------------------------------------
 router.post("/checkout-success", async (req, res) => {
   const client = await pool.connect();
@@ -136,9 +144,22 @@ router.post("/checkout-success", async (req, res) => {
     }
 
     let totalAmount = 0;
-    for (const item of itemsRes.rows) {
-      totalAmount += Number(item.final_price) * item.quantity;
-    }
+    
+    // We create a sanitized array of items with integer prices to use for insertion later
+    const sanitizedItems = itemsRes.rows.map(item => {
+        // FIX: Round off the float price coming from SQL division
+        const roundedPrice = Math.round(Number(item.final_price));
+        
+        totalAmount += roundedPrice * item.quantity;
+        
+        return {
+            ...item,
+            final_price: roundedPrice // Store the integer version
+        };
+    });
+
+    // FIX: Final safety round on total amount
+    totalAmount = Math.round(totalAmount);
 
     const orderRes = await client.query(
       `
@@ -146,12 +167,12 @@ router.post("/checkout-success", async (req, res) => {
       VALUES ($1, $2, 'paid', $3)
       RETURNING id
       `,
-      [user.uid, totalAmount, paymentIntentId]
+      [user.uid, totalAmount, paymentIntentId] // totalAmount is now strictly Integer
     );
 
     const orderId = orderRes.rows[0].id;
 
-    for (const item of itemsRes.rows) {
+    for (const item of sanitizedItems) {
       await client.query(
         `
         INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase)
@@ -161,7 +182,7 @@ router.post("/checkout-success", async (req, res) => {
           orderId,
           item.product_id,
           item.quantity,
-          Number(item.final_price)
+          item.final_price // This is the rounded integer we created above
         ]
       );
 
@@ -185,6 +206,7 @@ router.post("/checkout-success", async (req, res) => {
     console.error("Checkout Error:", err);
 
     if (err.code === "23505") {
+      // Duplicate key error (idempotency check), consider success
       return res.json({ success: true });
     }
 
